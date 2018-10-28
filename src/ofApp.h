@@ -5,6 +5,8 @@
 #include "ofxNetwork.h"
 #include "ofxGui.h"
 #include "ofxVideoRecorder.h"
+#include "ofxJSON.h"
+#include "ofxAssimpModelLoader.h"
 
 // This openFrameworks example is designed to demonstrate how to access the
 // webcam.
@@ -34,6 +36,8 @@ public:
     void audioIn(float * input, int bufferSize, int nChannels);
     void startRecording(string tag);
     void stopRecording();
+    void loadFiles();
+    void setSource(int i);
 
     // Web cam acquistion
     ofVideoGrabber vidGrabber;
@@ -44,6 +48,9 @@ public:
     ofxUDPManager udpConnection;
     static const int portNo = 10552;
 
+    // Video player
+    ofVideoPlayer masterPlayer, studentPlayer;
+    
     // Video file writer
     ofxVideoRecorder    vidRecorder;
     ofSoundStream       soundStream;
@@ -60,4 +67,10 @@ public:
     // GUI
     ofParameter<float> scrubber;
     ofxPanel gui;
+    
+    // Setup data
+    vector <ofxJSONElement> data;
+    
+    // 3d model of skateboard
+    ofxAssimpModelLoader skateboard;
 };

@@ -10,7 +10,7 @@ void ofApp::setup(){
     
     //GUI Setup
     gui.setup();
-    //gui.setup("GUI","settings.xml",10,10); // most of the time you don't need a name
+    //gui.setup("GUI","settings.xml",200,10); // most of the time you don't need a name
     gui.add(scrubber.set("scrubber", 140, 10, 300));
     
     //get back a list of devices.
@@ -54,6 +54,46 @@ void ofApp::setup(){
 
     // Frame rate
     ofSetFrameRate(30);
+
+    loadFiles();
+    ofLogNotice("setup") << "Loaded " << data.size() << " files." << endl;
+    setSource(0);
+    
+    // Load 3d model
+    // load the first model
+    skateboard.loadModel("penguin.dae", 20);
+}
+
+//------ Load all files
+void ofApp::loadFiles() {
+    //some path, may be absolute or relative to bin/data
+    string path = "/Users/bst/Dropbox/InstallationArt/SkateTrickDetector/data/unprocessed";
+    ofDirectory dir(path);
+    //only show json files
+    dir.allowExt("json");
+    //populate the directory object
+    dir.listDir();
+
+    //go through and print out all the paths
+    data.resize(dir.size());
+    for(int i = 0; i < dir.size(); i++){
+        ofLogNotice(dir.getPath(i));
+        bool ok=data[i].open(dir.getPath(i));
+        if (!ok)
+            ofLogError("ofApp::setup")  << "Failed to parse JSON in " << dir.getPath(i) << endl;
+        ofLogNotice("Loaded "+data[i]["name"].asString());
+    }
+}
+
+void ofApp::setSource(int i) {
+    if (i>= data.size())
+        ofLogError("setsorouce") << " index " << i << " > " << data.size()-1 << endl;
+    // Open video stream of each
+    masterPlayer.load(data[i]["vid"].asString());
+    string masterFile=data[i]["scores"]["vid"].asString();
+    studentPlayer.load(masterFile);
+    ofLogNotice("setSource") << "Master:  " << masterFile << ": " << masterPlayer.getWidth() << " x " << masterPlayer.getHeight() << endl;
+    ofLogNotice("setSource") << "Student: " << studentPlayer.getWidth() << " x " << studentPlayer.getHeight() << endl;
 
 }
 
@@ -194,6 +234,9 @@ void ofApp::update(){
         printf("No data for %d frames\n",noData);
         stopRecording();
     }
+    // Video players
+    masterPlayer.update();
+    studentPlayer.update();
 }
 
 //--------------------------------------------------------------
@@ -202,12 +245,19 @@ void ofApp::draw(){
 
     // Draw video windows
     ofSetHexColor(0xffffff);
-    vidGrabber.draw(20, 20);
+    ofPushMatrix();
+    ofScale(0.5);
+    masterPlayer.draw(20,20);
+    studentPlayer.draw(masterPlayer.getWidth()+20,20);
+    vidGrabber.draw(20, masterPlayer.getHeight()+20);
     //vidGrabber.draw(20+camWidth+20, 20);
-
+    ofPopMatrix();
+    ofTranslate(0,400);
     // GUI
     gui.draw();
-
+    // model
+    skateboard.drawFaces();
+    
         stringstream ss;
     ss << "video queue size: " << vidRecorder.getVideoQueueSize() << endl
     << "audio queue size: " << vidRecorder.getAudioQueueSize() << endl
