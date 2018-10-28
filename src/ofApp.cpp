@@ -4,8 +4,8 @@
 
 //--------------------------------------------------------------
 void ofApp::setup(){
-    camWidth = 640;  // try to grab at this size.
-    camHeight = 480;
+    camWidth = 1280;  // try to grab at this size.
+    camHeight = 800;
 
     
     //GUI Setup
@@ -40,9 +40,6 @@ void ofApp::setup(){
     // Video write setup
     //    vidRecorder.setFfmpegLocation(ofFilePath::getAbsolutePath("ffmpeg")); // use this is you have ffmpeg installed in your data folder
 
-    fileName = "testMovie";
-    fileExt = ".mov"; // ffmpeg uses the extension to determine the container type. run 'ffmpeg -formats' to see supported formats
-
     // override the default codecs if you like
     // run 'ffmpeg -codecs' to find out what your implementation supports (or -formats on some older versions)
     vidRecorder.setVideoCodec("mpeg4");
@@ -74,6 +71,58 @@ static inline void rtrim(std::string &s) {
     }).base(), s.end());
 }
 
+void ofApp::startRecording(string tag) {
+    string ts=ofGetTimestampString();
+    string basepath="/tmp";
+    string imuFileName=basepath+"/imu_"+tag+"_"+ts+".csv";
+    string vidFileName=basepath+"/vid_"+tag+"_"+ts+".mov";
+    
+    printf("New files: %s and %s\n", imuFileName.c_str(),vidFileName.c_str());
+    imuFD=std::fopen(imuFileName.c_str(),"w");
+    
+    
+    bRecording = !bRecording;
+    if(bRecording && !vidRecorder.isInitialized()) {
+        vidRecorder.setup(vidFileName, vidGrabber.getWidth(), vidGrabber.getHeight(), 30, sampleRate, channels);
+        //          vidRecorder.setup(fileName+ofGetTimestampString()+fileExt, vidGrabber.getWidth(), vidGrabber.getHeight(), 30); // no audio
+        //            vidRecorder.setup(fileName+ofGetTimestampString()+fileExt, 0,0,0, sampleRate, channels); // no video
+        //          vidRecorder.setupCustomOutput(vidGrabber.getWidth(), vidGrabber.getHeight(), 30, sampleRate, channels, "-vcodec mpeg4 -b 1600k -acodec mp2 -ab 128k -f mpegts udp://localhost:1234"); // for custom ffmpeg output string (streaming, etc)
+        
+        // Start recording
+        vidRecorder.start();
+    }
+    else if(!bRecording && vidRecorder.isInitialized()) {
+        vidRecorder.setPaused(true);
+    }
+    else if(bRecording && vidRecorder.isInitialized()) {
+        vidRecorder.setPaused(false);
+    }
+    
+    // Flush any pending IMU data
+    // Get UDP messages from accelerometer
+    char udpMessage[100000];
+    int nflushed=0;
+    
+    while (true) {
+        udpConnection.Receive(udpMessage,100000);
+        string message=udpMessage;
+        rtrim(message);
+        if (message == "") {
+            break;
+        }
+        nflushed++;
+    }
+    printf("Flushed %d frames\n", nflushed);
+}
+
+void ofApp::stopRecording() {
+    assert(imuFD!=NULL);
+    fclose(imuFD);
+    imuFD=NULL;
+    bRecording = false;
+    vidRecorder.close();
+}
+
 
 //--------------------------------------------------------------
 void ofApp::update(){
@@ -98,14 +147,18 @@ void ofApp::update(){
     // Get UDP messages from accelerometer
     char udpMessage[100000];
     int nmsg=0;
+    static int noData=0;
+    
     while (true) {
         udpConnection.Receive(udpMessage,100000);
         string message=udpMessage;
+        rtrim(message);
         if (message == "") {
             if (nmsg>0)
                 printf("[x%d]\n",nmsg);
             break;
         }
+        noData=0;   // Reset no data counter
         if (nmsg==0)
             printf("Got msg: %s ",message.c_str());
         nmsg++;
@@ -122,25 +175,24 @@ void ofApp::update(){
         string tag=tokens.back();
         rtrim(tag);
         printf("time=%f,tag=%s\n",time,tag.c_str());
-        if (time-lasttime > 5) {
+        if (imuFD!=NULL && time-lasttime > 5) {
             // Paused
-            printf("Paused\n");
-            if (imuFD!=NULL)
-                fclose(imuFD);
+            printf("Time jump\n");
+            stopRecording();
         }
         lasttime=time;
         // Write to file
-        if (imuFD==NULL) {
-            auto t = std::time(nullptr);
-            auto tm = *std::localtime(&t);
-            std::ostringstream oss;
-            oss << std::put_time(&tm, "%Y%m%d_%H%M%S");
-
-            string imuFileName="imu_"+tag+"_"+oss.str()+".csv";
-            printf("New file: %s\n", imuFileName.c_str());
-            imuFD=std::fopen(imuFileName.c_str(),"w");
-        }
-        fprintf(imuFD,"%s\n",message.c_str());
+        if (imuFD==NULL)
+            startRecording(tag);
+            // Don't add to imu file yet -- flushed some data while starting recording
+        else
+            fprintf(imuFD,"%s\n",message.c_str());
+    }
+    noData++;
+    if (imuFD!=NULL &&noData>60) {
+        // No data for a while, close files
+        printf("No data for %d frames\n",noData);
+        stopRecording();
     }
 }
 
@@ -151,7 +203,7 @@ void ofApp::draw(){
     // Draw video windows
     ofSetHexColor(0xffffff);
     vidGrabber.draw(20, 20);
-    vidGrabber.draw(20+camWidth+20, 20);
+    //vidGrabber.draw(20+camWidth+20, 20);
 
     // GUI
     gui.draw();
@@ -205,26 +257,10 @@ void ofApp::keyPressed(int key){
 void ofApp::keyReleased(int key){
     
     if(key=='r'){
-        bRecording = !bRecording;
-        if(bRecording && !vidRecorder.isInitialized()) {
-            vidRecorder.setup(fileName+ofGetTimestampString()+fileExt, vidGrabber.getWidth(), vidGrabber.getHeight(), 30, sampleRate, channels);
-	    //          vidRecorder.setup(fileName+ofGetTimestampString()+fileExt, vidGrabber.getWidth(), vidGrabber.getHeight(), 30); // no audio
-	    //            vidRecorder.setup(fileName+ofGetTimestampString()+fileExt, 0,0,0, sampleRate, channels); // no video
-	    //          vidRecorder.setupCustomOutput(vidGrabber.getWidth(), vidGrabber.getHeight(), 30, sampleRate, channels, "-vcodec mpeg4 -b 1600k -acodec mp2 -ab 128k -f mpegts udp://localhost:1234"); // for custom ffmpeg output string (streaming, etc)
-
-            // Start recording
-            vidRecorder.start();
-        }
-        else if(!bRecording && vidRecorder.isInitialized()) {
-            vidRecorder.setPaused(true);
-        }
-        else if(bRecording && vidRecorder.isInitialized()) {
-            vidRecorder.setPaused(false);
-        }
+        startRecording("Manual");
     }
     if(key=='c'){
-        bRecording = false;
-        vidRecorder.close();
+        stopRecording();
     }
 
 }

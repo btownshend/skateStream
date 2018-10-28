@@ -32,6 +32,8 @@ public:
     void dragEvent(ofDragInfo dragInfo);
     void gotMessage(ofMessage msg);
     void audioIn(float * input, int bufferSize, int nChannels);
+    void startRecording(string tag);
+    void stopRecording();
 
     // Web cam acquistion
     ofVideoGrabber vidGrabber;
@@ -48,8 +50,6 @@ public:
     bool bRecording;
     int sampleRate;
     int channels;
-    string fileName;
-    string fileExt;
 
     void recordingComplete(ofxVideoRecorderOutputFileCompleteEventArgs& args);
 
