@@ -89,11 +89,12 @@ void ofApp::setSource(int i) {
     if (i>= data.size())
         ofLogError("setsorouce") << " index " << i << " > " << data.size()-1 << endl;
     // Open video stream of each
-    masterPlayer.load(data[i]["vid"].asString());
+    string studentFile = data[i]["vid"].asString();
+    masterPlayer.load(studentFile);
     string masterFile=data[i]["scores"]["vid"].asString();
     studentPlayer.load(masterFile);
     ofLogNotice("setSource") << "Master:  " << masterFile << ": " << masterPlayer.getWidth() << " x " << masterPlayer.getHeight() << endl;
-    ofLogNotice("setSource") << "Student: " << studentPlayer.getWidth() << " x " << studentPlayer.getHeight() << endl;
+    ofLogNotice("setSource") << "Student: " << studentFile << ": " << studentPlayer.getWidth() << " x " << studentPlayer.getHeight() << endl;
 
 }
 
@@ -248,8 +249,8 @@ void ofApp::draw(){
     ofPushMatrix();
     ofScale(0.5);
     masterPlayer.draw(20,20);
-    studentPlayer.draw(masterPlayer.getWidth()+20,20);
-    vidGrabber.draw(20, masterPlayer.getHeight()+20);
+    studentPlayer.draw(studentPlayer.getWidth()+20,20);
+    vidGrabber.draw(20, studentPlayer.getHeight()+20);
     //vidGrabber.draw(20+camWidth+20, 20);
     ofPopMatrix();
     ofTranslate(0,400);
