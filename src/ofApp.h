@@ -65,12 +65,20 @@ public:
     FILE *imuFD=NULL;
     
     // GUI
-    ofParameter<float> scrubber;
+    ofParameter<int> scrubber;  // Frame scrubber
+    ofParameter<int> fileNumber; // Choose which student file
+    ofParameter<bool> playToggle, loadFile, liveVideo;
+    ofParameter<string> currentFile;
+    
     ofxPanel gui;
     
     // Setup data
     vector <ofxJSONElement> data;
-    
+    Json::Value align,srpy, mrpy;
+    float currmp, currmy, currmr;
+    float currsp, currsy, currsr;
+
     // 3d model of skateboard
     ofxAssimpModelLoader skateboard;
+    
 };

@@ -12,7 +12,12 @@ void ofApp::setup(){
     gui.setup();
     //gui.setup("GUI","settings.xml",200,10); // most of the time you don't need a name
     gui.add(scrubber.set("scrubber", 140, 10, 300));
-    
+    gui.add(fileNumber.set("fileNumber", 20, 10, 300));
+    gui.add(playToggle.set("play",false,false,true));
+    gui.add(loadFile.set("load",false,false,true));
+    gui.add(currentFile.set("curfile","FILENAME"));
+    gui.add(liveVideo.set("live",false,false,true));
+
     //get back a list of devices.
     vector<ofVideoDevice> devices = vidGrabber.listDevices();
 
@@ -61,7 +66,15 @@ void ofApp::setup(){
     
     // Load 3d model
     // load the first model
-    skateboard.loadModel("penguin.dae", 20);
+    //string modelFile="skateboard_.obj";
+    //string modelFile="model.dae";
+    string modelFile="penguin.dae";
+
+    if (!skateboard.loadModel(modelFile, true))
+        ofLogError("setup") << "Failed load of " << modelFile << endl;
+    else
+        ofLogNotice("setup") << "Loaded " << modelFile << endl;
+
 }
 
 //------ Load all files
@@ -83,19 +96,35 @@ void ofApp::loadFiles() {
             ofLogError("ofApp::setup")  << "Failed to parse JSON in " << dir.getPath(i) << endl;
         ofLogNotice("Loaded "+data[i]["name"].asString());
     }
+    
+    fileNumber.set("fileNumber", 0, 0, data.size()-1);
 }
 
 void ofApp::setSource(int i) {
     if (i>= data.size())
         ofLogError("setsorouce") << " index " << i << " > " << data.size()-1 << endl;
     // Open video stream of each
-    string studentFile = data[i]["vid"].asString();
-    masterPlayer.load(studentFile);
+    string studentFile = data[i]["folder"].asString()+"/"+data[i]["vid"].asString();
     string masterFile=data[i]["scores"]["vid"].asString();
-    studentPlayer.load(masterFile);
+    masterPlayer.load(masterFile);
+    studentPlayer.load(studentFile);
     ofLogNotice("setSource") << "Master:  " << masterFile << ": " << masterPlayer.getWidth() << " x " << masterPlayer.getHeight() << endl;
     ofLogNotice("setSource") << "Student: " << studentFile << ": " << studentPlayer.getWidth() << " x " << studentPlayer.getHeight() << endl;
+    masterPlayer.play();
+    masterPlayer.setLoopState(OF_LOOP_NORMAL);
+    scrubber.set("scrubber", 0, 0, masterPlayer.getTotalNumFrames()-1);
 
+    studentPlayer.play();
+    
+    align=data[i]["scores"]["align"];
+    ofLogNotice("setSource") << "got " << align.size() <<  " alignment points" << endl; // ":" << ofToString(align) <<
+    
+    mrpy=data[i]["scores"]["rpy"];
+    srpy=data[i]["rpy"];
+    ofLogNotice("setSource") << "got " << mrpy.size() <<  " mrpy points" << endl; // ":" << ofToString(align) <<
+    ofLogNotice("setSource") << "got " << srpy.size() <<  " srpy points" << endl; // ":" << ofToString(align) <<
+
+    currentFile = data[i]["name"].asString();
 }
 
 //--------------------------------------------------------------
@@ -185,6 +214,11 @@ void ofApp::update(){
         ofLogWarning("The video recorder failed to write some audio samples!");
     }
 
+    // Check if we need to load a new file
+    if (loadFile) {
+        loadFile=false;
+        setSource(fileNumber);
+    }
     // Get UDP messages from accelerometer
     char udpMessage[100000];
     int nmsg=0;
@@ -236,30 +270,111 @@ void ofApp::update(){
         stopRecording();
     }
     // Video players
+    if (playToggle && !masterPlayer.isPlaying()) {
+        masterPlayer.play();
+        studentPlayer.play();
+    } else if (!playToggle && masterPlayer.isPlaying()) {
+        masterPlayer.stop();
+        studentPlayer.stop();
+    }
+
+
+    int mframe;
+    if (masterPlayer.isPlaying()) {
+        mframe=masterPlayer.getCurrentFrame();
+        scrubber=mframe;
+    } else {
+        masterPlayer.setFrame(scrubber);
+        mframe=scrubber;
+    }
     masterPlayer.update();
+
+    int sframe;
+    
+    if (mframe>align.size())
+        ; //ofLogError("update") << "Master frame " << mframe << " > num align points (" << align.size() << ")" << endl;
+    else {
+        sframe=align[mframe].asInt();
+        //ofLogNotice("update") << "Setting student to frame " << sframe << endl;
+        studentPlayer.setFrame(sframe);
+    }
     studentPlayer.update();
+    if (mframe >=0 && mframe < mrpy.size()) {
+    currmr=mrpy[mframe][0].asFloat();
+    currmp=mrpy[mframe][1].asFloat();
+    currmy=mrpy[mframe][2].asFloat();
+
+    static int lastmframe=mframe;
+    if (lastmframe != mframe) {
+        ofLogNotice("update") << "master frame=" << mframe << ", rpy=" << currmr << "," << currmp <<", " << currmy;
+        lastmframe=mframe;
+    }
+    }
+    if (sframe >=0 && sframe < mrpy.size()) {
+        currsr=srpy[sframe][0].asFloat();
+        currsp=srpy[sframe][1].asFloat();
+        currsy=srpy[sframe][2].asFloat();
+        
+        static int lastsframe=sframe;
+        if (lastsframe != sframe) {
+            ofLogNotice("update") << "student frame=" << sframe << ", rpy=" << currsr << "," << currsp <<", " << currsy;
+            lastsframe=sframe;
+        }
+    }
 }
 
 //--------------------------------------------------------------
 void ofApp::draw(){
     ofBackground(100, 100, 100);
-
+    //ofEnableDepthTest();
+    
     // Draw video windows
     ofSetHexColor(0xffffff);
     ofPushMatrix();
     ofScale(0.5);
     masterPlayer.draw(20,20);
     studentPlayer.draw(studentPlayer.getWidth()+20,20);
-    vidGrabber.draw(20, studentPlayer.getHeight()+20);
-    //vidGrabber.draw(20+camWidth+20, 20);
+    if (liveVideo)
+        vidGrabber.draw(20, studentPlayer.getHeight()+40);
+        //vidGrabber.draw(20+camWidth+20, 20);
     ofPopMatrix();
-    ofTranslate(0,400);
-    // GUI
-    gui.draw();
-    // model
-    skateboard.drawFaces();
     
-        stringstream ss;
+    ofPushMatrix();
+    ofTranslate(studentPlayer.getWidth()-300,500);
+    ofScale(0.3);
+
+    ofRotate(currsp*180/3.14+180,1,0,0);
+    ofRotate(currsy*180/3.14,0,1,0);
+    ofRotate(currsr*180/3.14,0,0,1);
+
+    // model
+    skateboard.setPosition(0, 0, 0);
+    //skateboard.setRotation(0,ofGetFrameNum()/1.0,1,0,0);
+    //skateboard.setScale(0.8, 0.8, 0.8);
+    skateboard.drawFaces();
+    ofPopMatrix();
+    
+    ofPushMatrix();
+    ofTranslate(200,500);
+    ofScale(0.3);
+    
+    ofRotate(currmp*180/3.14+180,1,0,0);
+    ofRotate(currmy*180/3.14,0,1,0);
+    ofRotate(currmr*180/3.14,0,0,1);
+    
+    // model
+    //skateboard.setRotation(0,ofGetFrameNum()/1.0,1,0,0);
+    //skateboard.setScale(0.8, 0.8, 0.8);
+    skateboard.drawFaces();
+    ofPopMatrix();
+    
+    // GUI
+    ofPushMatrix();
+    gui.setPosition(studentPlayer.getHeight(),ofGetHeight()-gui.getHeight()-20);
+    gui.draw();
+    ofPopMatrix();
+
+    stringstream ss;
     ss << "video queue size: " << vidRecorder.getVideoQueueSize() << endl
     << "audio queue size: " << vidRecorder.getAudioQueueSize() << endl
     << "FPS: " << ofGetFrameRate() << endl
